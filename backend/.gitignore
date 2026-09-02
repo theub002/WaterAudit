@@ -30,5 +30,4 @@ firebase-credentials.json
 
 #services
 delete_user.py
-email_service.py
 scratch.py

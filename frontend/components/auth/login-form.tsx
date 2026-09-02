@@ -9,8 +9,7 @@ import { Label } from "@/components/ui/label"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/AuthContext"
 import { auth } from "@/lib/firebase"
-import { signInWithEmailAndPassword, signOut, sendEmailVerification, User, GoogleAuthProvider, signInWithPopup } from "firebase/auth"
-
+import { signInWithEmailAndPassword, signOut, sendEmailVerification, User, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from "firebase/auth"
 export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -125,6 +124,31 @@ export function LoginForm() {
     }
   }
 
+  const handleForgotPassword = async () => {
+    const emailInput = document.getElementById("email") as HTMLInputElement;
+    const email = emailInput?.value;
+    
+    if (!email) {
+      setError("Please enter your email address first to reset your password.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setSuccess("Password reset email sent! Please check your inbox.");
+    } catch (err: any) {
+      let msg = err.message || "Failed to send reset email.";
+      msg = msg.replace(/^Firebase:\s*(Error\s*)?/, "").replace(/\(auth\/[a-zA-Z0-9-]+\)\.?/g, "").trim();
+      setError(msg || "Failed to send reset email.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   return (
     <motion.form
       onSubmit={handleSubmit}
@@ -222,6 +246,7 @@ export function LoginForm() {
       <div className="flex justify-end">
         <button
           type="button"
+          onClick={handleForgotPassword}
           className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
         >
           Forgot Password?

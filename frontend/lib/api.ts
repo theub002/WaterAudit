@@ -79,6 +79,10 @@ export async function updateProfile(data: Partial<UserProfile>) {
   return apiFetch<UserProfile>("/api/users/me", { method: "PUT", body: JSON.stringify(data) });
 }
 
+export async function requestAdminAccess(): Promise<UserProfile> {
+  return apiFetch<UserProfile>("/api/users/request-admin", { method: "POST" });
+}
+
 // Change password is now handled directly by Firebase SDK
 
 // ── Projects ─────────────────────────────────────────────────────

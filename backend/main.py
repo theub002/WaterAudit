@@ -50,11 +50,6 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     user = db.query(models.User).filter(models.User.firebase_uid == firebase_uid).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found in database")
-    if user.role in ["admin", "superadmin"]:
-        if user.admin_status == "pending":
-            raise HTTPException(status_code=403, detail="Account pending approval")
-        if user.admin_status == "rejected":
-            raise HTTPException(status_code=403, detail="Admin Access Denied")
 
     return user
 
@@ -63,6 +58,10 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 def get_admin_user(current_user: models.User = Depends(get_current_user)) -> models.User:
     if current_user.role not in ["admin", "superadmin"]:
         raise HTTPException(status_code=403, detail="Not enough privileges")
+    if current_user.role == "admin" and current_user.admin_status == "pending":
+        raise HTTPException(status_code=403, detail="Admin privileges pending approval")
+    if current_user.admin_status == "rejected":
+        raise HTTPException(status_code=403, detail="Admin Access Denied")
     return current_user
 
 
@@ -134,6 +133,35 @@ def update_profile(
     return current_user
 
 
+# ── Users: Request Admin Access ───────────────────────────────────
+@app.post("/api/users/request-admin", response_model=models.UserResponse)
+def request_admin_access(
+    background_tasks: BackgroundTasks,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role != "user":
+        raise HTTPException(status_code=400, detail="Only standard users can request admin access.")
+    
+    current_user.role = "admin"
+    current_user.admin_status = "pending"
+    db.commit()
+    db.refresh(current_user)
+
+    # Notify Superadmins
+    superadmins = db.query(models.User).filter(models.User.role == "superadmin").all()
+    superadmin_emails = [sa.email for sa in superadmins]
+    if superadmin_emails:
+        background_tasks.add_task(
+            email_service.send_new_admin_notification, 
+            superadmin_emails, 
+            current_user.email, 
+            current_user.full_name or "Unknown Name"
+        )
+
+    return current_user
+
+
 
 # ── Users: Delete Account ─────────────────────────────────────────
 @app.delete("/api/users/me", status_code=204)
@@ -161,15 +189,19 @@ def list_projects(
     if current_user.role == "superadmin":
         return db.query(models.Project).order_by(models.Project.updated_at.desc()).all()
 
+    conditions = [
+        models.Project.owner_id == current_user.id,
+        (models.Project.status == "completed") & (models.User.role == "admin")
+    ]
+    
+    # If the user is an admin, they should also see any project in their assigned areas
+    if current_user.role == "admin" and current_user.assigned_areas:
+        conditions.append(models.Project.location.in_(current_user.assigned_areas))
+
     projects = (
         db.query(models.Project)
         .join(models.User, models.Project.owner_id == models.User.id)
-        .filter(
-            or_(
-                models.Project.owner_id == current_user.id,
-                (models.Project.status == "completed") & (models.User.role == "admin")
-            )
-        )
+        .filter(or_(*conditions))
         .order_by(models.Project.updated_at.desc())
         .all()
     )
@@ -183,12 +215,6 @@ def create_project(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role == "admin":
-        if not project.location or project.location not in current_user.assigned_areas:
-            raise HTTPException(
-                status_code=403, 
-                detail="Admins can only create projects in their assigned areas."
-            )
 
     new_project = models.Project(
         owner_id=current_user.id,

@@ -7,7 +7,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/contexts/AuthContext"
-import { updateProfile } from "@/lib/api"
+import { updateProfile, requestAdminAccess } from "@/lib/api"
 import { auth } from "@/lib/firebase"
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth"
 
@@ -114,10 +114,29 @@ export default function ProfilePage() {
         <div className="text-center sm:text-left">
           <h2 className="text-xl font-bold text-[#0f172a]">{user?.full_name || "No name set"}</h2>
           <p className="text-slate-500 text-sm">{user?.email}</p>
-          <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${user?.role === "admin" ? "bg-violet-100 text-violet-700" : "bg-sky-100 text-sky-700"}`}>
+          <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${user?.role === "superadmin" ? "bg-amber-100 text-amber-700" : user?.role === "admin" ? "bg-violet-100 text-violet-700" : "bg-sky-100 text-sky-700"}`}>
             <Shield className="h-3 w-3" />
-            {user?.role === "admin" ? "Admin" : "User"}
+            {user?.role === "superadmin" ? "Superadmin" : user?.role === "admin" ? "Admin" : "User"}
           </span>
+          {user?.role === "user" && (
+            <div className="mt-3">
+              <button 
+                onClick={async () => {
+                  if (confirm("Request admin access? Your account will be locked pending superadmin approval.")) {
+                    try {
+                      await requestAdminAccess();
+                      window.location.reload();
+                    } catch (e: any) {
+                      setToast({ type: "error", message: e.message || "Failed to request admin access" });
+                    }
+                  }
+                }}
+                className="text-xs font-semibold text-[#0284c7] hover:text-[#0369a1] bg-sky-50 hover:bg-sky-100 px-3 py-1.5 rounded-lg transition-colors border border-sky-100 shadow-sm"
+              >
+                Request Admin Access
+              </button>
+            </div>
+          )}
         </div>
         <div className="sm:ml-auto text-sm text-slate-400 text-center sm:text-right">
           <p>Member since</p>
